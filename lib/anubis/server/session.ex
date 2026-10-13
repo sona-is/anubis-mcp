@@ -830,8 +830,14 @@ defmodule Anubis.Server.Session do
       auth: auth
     }
 
-    %{state.frame | context: context}
+    reapply_transport_assigns(%{state.frame | context: context}, transport_context)
   end
+
+  # A request's assigns are merged into the session frame when it is received,
+  # but a queued request only dispatches after the in-flight task's returned
+  # frame has replaced that frame, so merge them again at dispatch.
+  defp reapply_transport_assigns(frame, %{assigns: assigns}) when is_map(assigns), do: Frame.assign(frame, assigns)
+  defp reapply_transport_assigns(frame, _transport_context), do: frame
 
   defp merge_transport_assigns(state, %{assigns: assigns}) when is_map(assigns) do
     original_context = state.frame.context

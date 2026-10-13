@@ -8,6 +8,7 @@ defmodule AsyncDispatchTestServer do
     * `increment` — reads/writes `frame.assigns[:counter]`. Verifies FIFO frame ordering.
     * `crash` — raises. Verifies async crash isolation.
     * `echo` — returns the input verbatim. Verifies session survives a previous crash.
+    * `whoami` — returns `frame.assigns[:principal]`. Verifies queued requests keep their own assigns.
   """
 
   use Anubis.Server,
@@ -48,6 +49,11 @@ defmodule AsyncDispatchTestServer do
         "properties" => %{"value" => %{"type" => "string"}},
         "required" => ["value"]
       }
+    },
+    %{
+      "name" => "whoami",
+      "description" => "return the principal assign",
+      "inputSchema" => %{"type" => "object", "properties" => %{}}
     },
     %{
       "name" => "malformed_return",
@@ -120,6 +126,13 @@ defmodule AsyncDispatchTestServer do
 
   defp handle_tool("malformed_return", _args, _frame) do
     :not_a_valid_handler_return
+  end
+
+  defp handle_tool("whoami", _args, frame) do
+    Response.tool()
+    |> Response.text("principal=#{frame.assigns[:principal]}")
+    |> Response.to_protocol()
+    |> then(&{:reply, &1, frame})
   end
 
   defp handle_tool("echo", %{"value" => value}, frame) do
