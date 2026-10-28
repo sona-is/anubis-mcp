@@ -71,6 +71,34 @@ defmodule Anubis.Server.SessionAsyncDispatchTest do
     end
   end
 
+  describe "queued request transport assigns" do
+    test "a queued request executes with its own transport assigns", %{session: session} do
+      caller = self()
+      alpha = %{assigns: %{test_pid: caller, principal: "alpha"}}
+      beta = %{assigns: %{test_pid: caller, principal: "beta"}}
+
+      Task.start(fn ->
+        req = tool_call_request("wait_signal", %{"signal" => "alpha"}, "alpha-1")
+        send(caller, {:reply, :alpha, GenServer.call(session, {:mcp_request, req, alpha}, 5_000)})
+      end)
+
+      assert_receive {:tool_running, blocker_pid, :alpha}, 1_000
+
+      Task.start(fn ->
+        req = tool_call_request("whoami", %{}, "beta-1")
+        send(caller, {:reply, :beta, GenServer.call(session, {:mcp_request, req, beta}, 5_000)})
+      end)
+
+      SyncHelpers.await_state(session, &(:queue.len(&1.request_queue) == 1))
+
+      send(blocker_pid, {:proceed, :alpha})
+
+      assert_receive {:reply, :alpha, {:ok, _}}, 1_000
+      assert_receive {:reply, :beta, {:ok, encoded}}, 1_000
+      assert tool_text(encoded) == "principal=beta"
+    end
+  end
+
   describe "crash isolation" do
     test "tool crash returns internal_error and session keeps serving", %{session: session} do
       caller = self()
